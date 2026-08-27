@@ -1,0 +1,5 @@
+/target/
+/dist/
+/media-projector-preflight.json
+.DS_Store
+

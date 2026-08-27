@@ -1,0 +1,17 @@
+services:
+  media-projector:
+    build: .
+    restart: unless-stopped
+    volumes:
+      - /storage:/storage
+    environment:
+      MEDIA_PROJECTOR_LOG_LEVEL: info
+
+  jellyfin:
+    image: jellyfin/jellyfin
+    restart: unless-stopped
+    volumes:
+      - /storage/jellyfin:/media:ro
+    ports:
+      - "8096:8096"
+
