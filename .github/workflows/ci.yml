@@ -24,7 +24,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Check out repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       - name: Install stable Rust
         run: |
@@ -32,7 +32,7 @@ jobs:
           rustup default stable
 
       - name: Cache Cargo data
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: |
             ~/.cargo/registry/index
@@ -47,7 +47,7 @@ jobs:
         run: ./scripts/check.sh
 
       - name: Upload release binary
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: media-projector-linux-x86_64-ci
           path: target/release/media-projector
