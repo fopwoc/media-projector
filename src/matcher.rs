@@ -258,6 +258,7 @@ fn sidecar_name(
 fn sidecar_labels(sidecar: &MediaFile, video: &PlannedVideo<'_>) -> Vec<String> {
     let mut labels = Vec::new();
     let mut seen = BTreeSet::new();
+    let mut languages = BTreeSet::new();
 
     if let Some(parent) = sidecar.relative.parent() {
         for component in parent.components() {
@@ -270,6 +271,11 @@ fn sidecar_labels(sidecar: &MediaFile, video: &PlannedVideo<'_>) -> Vec<String> 
             if let Some(label) = sanitize_label(&value) {
                 insert_label(&mut labels, &mut seen, label);
             }
+            for token in tokens(component.as_os_str()) {
+                if let Some(language) = language_code(&token) {
+                    languages.insert(language);
+                }
+            }
         }
     }
 
@@ -281,9 +287,20 @@ fn sidecar_labels(sidecar: &MediaFile, video: &PlannedVideo<'_>) -> Vec<String> 
         {
             continue;
         }
-        if let Some(label) = sanitize_label(&token) {
+        if let Some(language) = language_code(&token) {
+            languages.insert(language);
+            if token.len() > 3
+                && let Some(label) = sanitize_label(&token)
+            {
+                insert_label(&mut labels, &mut seen, label);
+            }
+        } else if let Some(label) = sanitize_label(&token) {
             insert_label(&mut labels, &mut seen, label);
         }
+    }
+
+    for language in languages {
+        insert_label(&mut labels, &mut seen, language.to_owned());
     }
 
     labels
@@ -497,6 +514,24 @@ fn is_noise_token(token: &str) -> bool {
     )
 }
 
+fn language_code(token: &str) -> Option<&'static str> {
+    match token {
+        "en" | "eng" | "english" => Some("en"),
+        "ru" | "rus" | "russian" => Some("ru"),
+        "ja" | "jp" | "jpn" | "japanese" => Some("ja"),
+        "de" | "deu" | "ger" | "german" => Some("de"),
+        "fr" | "fra" | "fre" | "french" => Some("fr"),
+        "es" | "spa" | "spanish" => Some("es"),
+        "it" | "ita" | "italian" => Some("it"),
+        "ko" | "kor" | "korean" => Some("ko"),
+        "pl" | "pol" | "polish" => Some("pl"),
+        "pt" | "por" | "portuguese" => Some("pt"),
+        "uk" | "ukr" | "ukrainian" => Some("uk"),
+        "zh" | "zho" | "chi" | "chinese" => Some("zh"),
+        _ => None,
+    }
+}
+
 fn is_generic_directory(value: &str) -> bool {
     let normalized = value
         .chars()
@@ -605,6 +640,32 @@ mod tests {
     }
 
     #[test]
+    fn normalizes_language_aliases_from_real_sidecar_layouts() {
+        let scan = Scan {
+            entries: vec![SourceEntry {
+                target_directory: Some("Show".into()),
+                files: vec![
+                    file("Show S01E01.mkv", MediaKind::Video),
+                    file("JP Subs/Show S01E01.jp_netflix.srt", MediaKind::Subtitle),
+                    file("RUS Sound [AniLiberty]/Show S01E01.mka", MediaKind::Audio),
+                ],
+            }],
+            ..Scan::default()
+        };
+
+        let plan = build_plan(&scan).unwrap();
+
+        assert!(
+            plan.links
+                .contains_key(Path::new("Show/Show S01E01.JP_Subs.netflix.ja.srt"))
+        );
+        assert!(
+            plan.links
+                .contains_key(Path::new("Show/Show S01E01.RUS_Sound_AniLiberty.ru.mka"))
+        );
+    }
+
+    #[test]
     fn refuses_ambiguous_episode_matches() {
         let scan = Scan {
             entries: vec![SourceEntry {
@@ -641,7 +702,7 @@ mod tests {
 
         assert!(
             plan.links
-                .contains_key(Path::new("Movie/Movie (2024).english.commentary.ass"))
+                .contains_key(Path::new("Movie/Movie (2024).english.commentary.en.ass"))
         );
     }
 

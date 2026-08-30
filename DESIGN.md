@@ -62,7 +62,10 @@ possible without weakening the default matcher.
 The output sidecar suffix is derived from meaningful parent directories and
 filename tokens not shared with the video. Generic names such as `Subs` and
 `Audio` are omitted, while `ru`, `signs`, `forced`, or a release-group name are
-retained. A deterministic hash resolves any remaining filename collision.
+retained. Common language names and two- or three-letter aliases are normalized
+to Jellyfin-compatible language tags, while descriptive directory labels remain
+available as track titles. A deterministic hash resolves any remaining filename
+collision.
 
 ## Stability boundary
 
