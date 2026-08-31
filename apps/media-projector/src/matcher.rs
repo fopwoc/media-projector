@@ -3,7 +3,7 @@ use std::ffi::{OsStr, OsString};
 use std::os::unix::ffi::OsStrExt;
 use std::path::{Path, PathBuf};
 
-use crate::media::{MediaFile, MediaKind, Scan, SourceEntry};
+use crate::media::{EntryTarget, MediaFile, MediaKind, Scan, SourceEntry};
 use crate::projection::MARKER_NAME;
 use crate::{Result, invalid_data};
 
@@ -44,6 +44,7 @@ pub(crate) struct EpisodeIdentity {
 
 struct PlannedVideo<'a> {
     file: &'a MediaFile,
+    target_directory: Option<OsString>,
     target_name: OsString,
     normalized_stem: String,
     identity: Option<EpisodeIdentity>,
@@ -59,11 +60,10 @@ pub fn build_plan(scan: &Scan) -> Result<ProjectionPlan> {
 }
 
 fn plan_entry(entry: &SourceEntry, plan: &mut ProjectionPlan) -> Result<()> {
-    if entry
-        .target_directory
-        .as_deref()
-        .is_some_and(|directory| directory == OsStr::new(MARKER_NAME))
-    {
+    if matches!(
+        &entry.target,
+        EntryTarget::Directory(directory) if directory == OsStr::new(MARKER_NAME)
+    ) {
         return Err(invalid_data(format!(
             "source top-level directory {MARKER_NAME:?} conflicts with the projection marker"
         ))
@@ -71,6 +71,7 @@ fn plan_entry(entry: &SourceEntry, plan: &mut ProjectionPlan) -> Result<()> {
     }
 
     let mut used_names = HashSet::new();
+    let mut used_directories = HashSet::from([OsString::from(MARKER_NAME)]);
     let mut videos = entry
         .files
         .iter()
@@ -81,8 +82,18 @@ fn plan_entry(entry: &SourceEntry, plan: &mut ProjectionPlan) -> Result<()> {
                 .file_name()
                 .expect("scanned files always have a file name");
             let target_name = allocate_name(preferred, &file.relative, &mut used_names);
+            let target_directory = match &entry.target {
+                EntryTarget::Root => None,
+                EntryTarget::Directory(directory) => Some(directory.clone()),
+                EntryTarget::PerVideoDirectory => Some(allocate_directory_name(
+                    file.relative.file_stem().unwrap_or(preferred),
+                    &file.relative,
+                    &mut used_directories,
+                )),
+            };
             PlannedVideo {
                 file,
+                target_directory,
                 target_name,
                 normalized_stem: normalized_stem(&file.relative),
                 identity: episode_identity(&file.relative),
@@ -93,7 +104,7 @@ fn plan_entry(entry: &SourceEntry, plan: &mut ProjectionPlan) -> Result<()> {
     videos.sort_by(|left, right| left.file.relative.cmp(&right.file.relative));
 
     for video in &videos {
-        let target = target_path(entry, &video.target_name);
+        let target = target_path(video.target_directory.as_deref(), &video.target_name);
         plan.links.insert(target.clone(), video.file.source.clone());
         plan.operations.push(PlannedOperation {
             source: video.file.source.clone(),
@@ -122,7 +133,7 @@ fn plan_entry(entry: &SourceEntry, plan: &mut ProjectionPlan) -> Result<()> {
         };
 
         let target_name = sidecar_name(sidecar, video, &mut used_names);
-        let target = target_path(entry, &target_name);
+        let target = target_path(video.target_directory.as_deref(), &target_name);
         plan.links.insert(target.clone(), sidecar.source.clone());
         plan.operations.push(PlannedOperation {
             source: sidecar.source.clone(),
@@ -152,6 +163,23 @@ fn match_video<'a>(
         }
     }
 
+    let mut prefix_candidates = videos
+        .iter()
+        .filter(|video| {
+            !video.normalized_stem.is_empty() && normalized.starts_with(&video.normalized_stem)
+        })
+        .collect::<Vec<_>>();
+    if let Some(longest) = prefix_candidates
+        .iter()
+        .map(|video| video.normalized_stem.len())
+        .max()
+    {
+        prefix_candidates.retain(|video| video.normalized_stem.len() == longest);
+        if let [video] = prefix_candidates.as_slice() {
+            return Ok((*video, "video-basename-prefix"));
+        }
+    }
+
     let identity_candidates =
         episode_identity(&sidecar.relative).map_or_else(Vec::new, |identity| {
             videos
@@ -175,18 +203,49 @@ fn match_video<'a>(
     if let [video] = videos {
         return Ok((video, "single-video-fallback"));
     }
-    if exact.len() > 1 || identity_candidates.len() > 1 {
+    if exact.len() > 1 || prefix_candidates.len() > 1 || identity_candidates.len() > 1 {
         Err("ambiguous video match")
     } else {
         Err("no matching video")
     }
 }
 
-fn target_path(entry: &SourceEntry, name: &OsStr) -> PathBuf {
-    entry.target_directory.as_ref().map_or_else(
+fn target_path(directory: Option<&OsStr>, name: &OsStr) -> PathBuf {
+    directory.map_or_else(
         || PathBuf::from(name),
         |directory| PathBuf::from(directory).join(name),
     )
+}
+
+fn allocate_directory_name(
+    preferred: &OsStr,
+    relative: &Path,
+    used: &mut HashSet<OsString>,
+) -> OsString {
+    if used.insert(preferred.to_owned()) {
+        return preferred.to_owned();
+    }
+
+    let mut candidate = preferred.to_owned();
+    candidate.push(format!(
+        ".{:08x}",
+        stable_hash(relative.as_os_str().as_bytes())
+    ));
+    if used.insert(candidate.clone()) {
+        return candidate;
+    }
+
+    for sequence in 2_u32.. {
+        let mut candidate = preferred.to_owned();
+        candidate.push(format!(
+            ".{:08x}.{sequence}",
+            stable_hash(relative.as_os_str().as_bytes())
+        ));
+        if used.insert(candidate.clone()) {
+            return candidate;
+        }
+    }
+    unreachable!()
 }
 
 fn allocate_name(preferred: &OsStr, relative: &Path, used: &mut HashSet<OsString>) -> OsString {
@@ -613,7 +672,7 @@ mod tests {
     fn matches_nested_sidecars_and_builds_jellyfin_names() {
         let scan = Scan {
             entries: vec![SourceEntry {
-                target_directory: Some("Frieren".into()),
+                target: EntryTarget::Directory("Frieren".into()),
                 files: vec![
                     file("[SubsPlease] Frieren - 01 (1080p).mkv", MediaKind::Video),
                     file("Subs/signs/Frieren 01.ass", MediaKind::Subtitle),
@@ -643,7 +702,7 @@ mod tests {
     fn normalizes_language_aliases_from_real_sidecar_layouts() {
         let scan = Scan {
             entries: vec![SourceEntry {
-                target_directory: Some("Show".into()),
+                target: EntryTarget::Directory("Show".into()),
                 files: vec![
                     file("Show S01E01.mkv", MediaKind::Video),
                     file("JP Subs/Show S01E01.jp_netflix.srt", MediaKind::Subtitle),
@@ -669,7 +728,7 @@ mod tests {
     fn refuses_ambiguous_episode_matches() {
         let scan = Scan {
             entries: vec![SourceEntry {
-                target_directory: Some("Show".into()),
+                target: EntryTarget::Directory("Show".into()),
                 files: vec![
                     file("Season 1/01.mkv", MediaKind::Video),
                     file("Season 2/01.mkv", MediaKind::Video),
@@ -689,7 +748,7 @@ mod tests {
     fn a_single_video_is_the_safe_fallback_for_a_movie() {
         let scan = Scan {
             entries: vec![SourceEntry {
-                target_directory: Some("Movie".into()),
+                target: EntryTarget::Directory("Movie".into()),
                 files: vec![
                     file("Movie (2024).mkv", MediaKind::Video),
                     file("Subs/English Commentary.ass", MediaKind::Subtitle),
@@ -707,10 +766,60 @@ mod tests {
     }
 
     #[test]
+    fn standalone_videos_and_sidecars_are_wrapped_by_video_stem() {
+        let scan = Scan {
+            entries: vec![SourceEntry {
+                target: EntryTarget::PerVideoDirectory,
+                files: vec![
+                    file("Paprika.mkv", MediaKind::Video),
+                    file("Paprika.en.srt", MediaKind::Subtitle),
+                    file("Perfect Blue.mkv", MediaKind::Video),
+                ],
+            }],
+            ..Scan::default()
+        };
+
+        let plan = build_plan(&scan).unwrap();
+
+        assert!(plan.links.contains_key(Path::new("Paprika/Paprika.mkv")));
+        assert!(plan.links.contains_key(Path::new("Paprika/Paprika.en.srt")));
+        assert!(
+            plan.links
+                .contains_key(Path::new("Perfect Blue/Perfect Blue.mkv"))
+        );
+    }
+
+    #[test]
+    fn sidecar_prefix_matching_prefers_the_longest_video_stem() {
+        let scan = Scan {
+            entries: vec![SourceEntry {
+                target: EntryTarget::PerVideoDirectory,
+                files: vec![
+                    file("Movie.mkv", MediaKind::Video),
+                    file("Movie Extended.mkv", MediaKind::Video),
+                    file("Movie Extended.en.srt", MediaKind::Subtitle),
+                ],
+            }],
+            ..Scan::default()
+        };
+
+        let plan = build_plan(&scan).unwrap();
+
+        assert!(
+            plan.links
+                .contains_key(Path::new("Movie Extended/Movie Extended.en.srt"))
+        );
+        assert_eq!(
+            plan.operations.last().unwrap().match_strategy,
+            Some("video-basename-prefix")
+        );
+    }
+
+    #[test]
     fn duplicate_flattened_video_names_are_disambiguated() {
         let scan = Scan {
             entries: vec![SourceEntry {
-                target_directory: Some("Show".into()),
+                target: EntryTarget::Directory("Show".into()),
                 files: vec![
                     file("Season 1/01.mkv", MediaKind::Video),
                     file("Season 2/01.mkv", MediaKind::Video),

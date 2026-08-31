@@ -24,6 +24,8 @@ fn one_shot_projects_a_nested_release() {
         b"another video",
     )
     .unwrap();
+    fs::write(source.join("Paprika.mkv"), b"standalone video").unwrap();
+    fs::write(source.join("Paprika.en.srt"), b"standalone subtitle").unwrap();
 
     media_projector::run(Config {
         source,
@@ -44,6 +46,8 @@ fn one_shot_projects_a_nested_release() {
     assert!(projected_audio.exists());
     assert!(projected_subtitle.exists());
     assert!(target.join("Dungeon Meshi/Dungeon Meshi - 01.mkv").exists());
+    assert!(target.join("Paprika/Paprika.mkv").exists());
+    assert!(target.join("Paprika/Paprika.en.srt").exists());
     assert_eq!(
         fs::metadata(video).unwrap().ino(),
         fs::metadata(projected_video).unwrap().ino()

@@ -25,8 +25,15 @@ pub struct MediaFile {
 }
 
 #[derive(Debug, Eq, PartialEq)]
+pub enum EntryTarget {
+    Root,
+    Directory(OsString),
+    PerVideoDirectory,
+}
+
+#[derive(Debug, Eq, PartialEq)]
 pub struct SourceEntry {
-    pub target_directory: Option<OsString>,
+    pub target: EntryTarget,
     pub files: Vec<MediaFile>,
 }
 
@@ -76,7 +83,7 @@ fn scan_flat(source: &Path, settle: Duration, now: SystemTime, result: &mut Scan
     collect_files(source, source, settle, now, &mut files, &mut result.stats)?;
     if !files.is_empty() {
         result.entries.push(SourceEntry {
-            target_directory: None,
+            target: EntryTarget::Root,
             files,
         });
     }
@@ -107,7 +114,7 @@ fn scan_grouped(source: &Path, settle: Duration, now: SystemTime, result: &mut S
             collect_files(&path, &path, settle, now, &mut files, &mut result.stats)?;
             if !files.is_empty() {
                 result.entries.push(SourceEntry {
-                    target_directory: Some(child.file_name()),
+                    target: EntryTarget::Directory(child.file_name()),
                     files,
                 });
             }
@@ -126,7 +133,7 @@ fn scan_grouped(source: &Path, settle: Duration, now: SystemTime, result: &mut S
 
     if !root_files.is_empty() {
         result.entries.push(SourceEntry {
-            target_directory: None,
+            target: EntryTarget::PerVideoDirectory,
             files: root_files,
         });
     }
@@ -327,7 +334,7 @@ mod tests {
         let scan = scan(&root, Duration::ZERO, ProjectionLayout::Flat).unwrap();
 
         assert_eq!(scan.entries.len(), 1);
-        assert_eq!(scan.entries[0].target_directory, None);
+        assert_eq!(scan.entries[0].target, EntryTarget::Root);
         assert_eq!(scan.entries[0].files.len(), 3);
         assert!(
             scan.entries[0]
@@ -335,6 +342,20 @@ mod tests {
                 .iter()
                 .any(|file| file.relative == Path::new("Movie One/movie.mkv"))
         );
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn grouped_layout_marks_root_files_for_per_video_directories() {
+        let root = test_directory("grouped-root-files");
+        fs::write(root.join("Paprika.mkv"), b"video").unwrap();
+        fs::write(root.join("Paprika.en.srt"), b"subtitle").unwrap();
+
+        let scan = scan(&root, Duration::ZERO, ProjectionLayout::GroupByDirectory).unwrap();
+
+        assert_eq!(scan.entries.len(), 1);
+        assert_eq!(scan.entries[0].target, EntryTarget::PerVideoDirectory);
+        assert_eq!(scan.entries[0].files.len(), 2);
         fs::remove_dir_all(root).unwrap();
     }
 

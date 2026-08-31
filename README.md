@@ -37,7 +37,8 @@ not consume the combined size of the video, audio, and subtitle files again.
   root. This is intended for a movies instance.
 - With `--group-by-directory`, each source top-level directory becomes one flat
   target directory. This is intended for a shows instance.
-- Root-level source files remain at the target root in either layout.
+- In grouped mode, a standalone top-level video is wrapped in a directory named
+  after its file stem. Matching standalone sidecars are placed beside it.
 - Videos and matched external audio/subtitle files are hardlinked; unrelated
   files are ignored.
 - The target is disposable derived state and must be dedicated to this process.
@@ -103,7 +104,7 @@ binary from the source directory:
 ```
 
 Add `--group-by-directory` to preview the shows layout. The selected projection
-layout is recorded in the report.
+layout and each entry's target mode are recorded in the report.
 
 `--source` defaults to the current directory only in this mode. The report is
 written atomically and the process exits. It contains:

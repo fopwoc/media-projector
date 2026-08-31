@@ -21,7 +21,7 @@ OPTIONS:
     --debounce SECONDS     Quiet time before an event-triggered scan [default: 3]
     --scan-interval SEC    Periodic full scan interval [default: 300]
     --settle SECONDS       Ignore files modified more recently than this [default: 30]
-    --group-by-directory   Keep one target directory per source top-level directory
+    --group-by-directory   Put each top-level media item in its own target directory
     --log-level LEVEL      debug, info, warn, or error [default: error]
     --preflight-debug PATH Write a non-mutating JSON scan/plan report and exit
     --once                 Reconcile once and exit

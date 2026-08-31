@@ -42,8 +42,9 @@ suited to a source containing movies.
 The `--group-by-directory` layout treats every direct child directory as an
 independent entry. Its video, audio, and subtitle files are scanned recursively,
 then projected into one target directory with the same top-level name. This is
-suited to a source whose direct children are shows. Recognized files directly in
-the source are treated as a shared root entry.
+suited to a source whose direct children are shows. A video directly in the
+source is projected into a directory named after its file stem; sidecars matched
+to that video use the same directory.
 
 The entry boundary also scopes sidecar matching. A subtitle below one show can
 never be matched to a video below another show in grouped mode.
@@ -57,10 +58,12 @@ Matching never uses remote metadata. Within one source entry it tries, in order:
 
 1. A unique normalized basename match after removing bracketed release tags and
    punctuation.
-2. A unique episode identity match. Supported forms include `S01E02`, `1x02`,
+2. A unique longest video-basename prefix match, covering sidecars such as
+   `Movie.en.srt` beside `Movie.mkv`.
+3. A unique episode identity match. Supported forms include `S01E02`, `1x02`,
    `Episode 02`, `Ep 02`, `02v2`, and a conservative trailing episode number.
    `Season 2/02.ass` carries both season and episode context from its path.
-3. The only video in the entry, which safely covers a movie or single-episode
+4. The only video in the entry, which safely covers a movie or single-episode
    release.
 
 Zero candidates and multiple candidates are both skipped. The warning contains

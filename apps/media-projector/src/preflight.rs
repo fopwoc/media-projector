@@ -9,7 +9,7 @@ use serde::Serialize;
 use crate::PreflightConfig;
 use crate::logging;
 use crate::matcher::{ProjectionPlan, build_plan, episode_identity, normalized_stem};
-use crate::media::{MediaFile, MediaKind, Scan, SourceEntry};
+use crate::media::{EntryTarget, MediaFile, MediaKind, Scan, SourceEntry};
 use crate::{ProjectionLayout, Result, invalid_input};
 
 #[derive(Serialize)]
@@ -65,6 +65,7 @@ struct SummaryReport {
 #[derive(Serialize)]
 struct EntryReport {
     source_entry: String,
+    target_mode: &'static str,
     target_directory: Option<String>,
     files: Vec<FileReport>,
 }
@@ -236,9 +237,17 @@ fn build_report(
 }
 
 fn entry_report(entry: &SourceEntry) -> EntryReport {
-    let target_directory = entry.target_directory.as_deref().map(path_string_os);
+    let (source_entry, target_mode, target_directory) = match &entry.target {
+        EntryTarget::Root => (".".to_owned(), "root", None),
+        EntryTarget::Directory(directory) => {
+            let directory = path_string_os(directory);
+            (directory.clone(), "directory", Some(directory))
+        }
+        EntryTarget::PerVideoDirectory => (".".to_owned(), "per-video-directory", None),
+    };
     EntryReport {
-        source_entry: target_directory.clone().unwrap_or_else(|| ".".to_owned()),
+        source_entry,
+        target_mode,
         target_directory,
         files: entry.files.iter().map(file_report).collect(),
     }
