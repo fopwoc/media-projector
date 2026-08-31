@@ -1,0 +1,11 @@
+[package]
+name = "media-projector"
+description = "Projects torrent-friendly media trees into a Jellyfin-friendly hardlink layout"
+edition.workspace = true
+license.workspace = true
+publish = false
+
+[dependencies]
+notify.workspace = true
+serde.workspace = true
+serde_json.workspace = true

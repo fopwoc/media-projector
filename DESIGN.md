@@ -35,10 +35,18 @@ depends solely on event delivery.
 
 ## Source entries and flattening
 
-Every direct child directory of the source is an independent entry. Its video,
-audio, and subtitle files are scanned recursively, then projected into one
-target directory with the same top-level name. Recognized files directly in the
-source are treated as a shared root entry.
+The default flat layout treats the complete recursive source tree as one entry
+and projects every video and matched sidecar into the target root. This is
+suited to a source containing movies.
+
+The `--group-by-directory` layout treats every direct child directory as an
+independent entry. Its video, audio, and subtitle files are scanned recursively,
+then projected into one target directory with the same top-level name. This is
+suited to a source whose direct children are shows. Recognized files directly in
+the source are treated as a shared root entry.
+
+The entry boundary also scopes sidecar matching. A subtitle below one show can
+never be matched to a video below another show in grouped mode.
 
 Duplicate video basenames are deterministic: the relative parent path is added
 as a suffix, followed by a stable path hash only if that is still not unique.

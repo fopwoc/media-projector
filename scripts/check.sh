@@ -10,3 +10,9 @@ cargo test --locked
 cargo clippy --locked --all-targets --all-features -- -D warnings
 cargo build --locked --release
 
+version=$(./scripts/version.sh)
+reported_version=$(./target/release/media-projector --version)
+if [[ "$reported_version" != "media-projector $version" ]]; then
+    echo "built binary reports unexpected version: $reported_version" >&2
+    exit 1
+fi

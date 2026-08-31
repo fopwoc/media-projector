@@ -5,7 +5,7 @@ use std::path::{Path, PathBuf};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use crate::logging;
-use crate::{Result, invalid_input};
+use crate::{ProjectionLayout, Result, invalid_input};
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum MediaKind {
@@ -47,7 +47,7 @@ pub struct Scan {
     pub stats: ScanStats,
 }
 
-pub fn scan(source: &Path, settle: Duration) -> Result<Scan> {
+pub fn scan(source: &Path, settle: Duration, layout: ProjectionLayout) -> Result<Scan> {
     let metadata = fs::metadata(source).map_err(|error| {
         invalid_input(format!(
             "cannot read source directory {}: {error}",
@@ -64,6 +64,26 @@ pub fn scan(source: &Path, settle: Duration) -> Result<Scan> {
 
     let now = SystemTime::now();
     let mut result = Scan::default();
+    match layout {
+        ProjectionLayout::Flat => scan_flat(source, settle, now, &mut result)?,
+        ProjectionLayout::GroupByDirectory => scan_grouped(source, settle, now, &mut result)?,
+    }
+    Ok(result)
+}
+
+fn scan_flat(source: &Path, settle: Duration, now: SystemTime, result: &mut Scan) -> Result<()> {
+    let mut files = Vec::new();
+    collect_files(source, source, settle, now, &mut files, &mut result.stats)?;
+    if !files.is_empty() {
+        result.entries.push(SourceEntry {
+            target_directory: None,
+            files,
+        });
+    }
+    Ok(())
+}
+
+fn scan_grouped(source: &Path, settle: Duration, now: SystemTime, result: &mut Scan) -> Result<()> {
     let mut root_files = Vec::new();
     let mut children = read_directory(source)?;
     children.sort_by_key(|entry| entry.file_name());
@@ -111,7 +131,7 @@ pub fn scan(source: &Path, settle: Duration) -> Result<Scan> {
         });
     }
 
-    Ok(result)
+    Ok(())
 }
 
 fn collect_files(
@@ -285,13 +305,36 @@ mod tests {
         fs::write(entry.join("poster.jpg"), b"image").unwrap();
         std::os::unix::fs::symlink(&entry, root.join("Show link")).unwrap();
 
-        let scan = scan(&root, Duration::ZERO).unwrap();
+        let scan = scan(&root, Duration::ZERO, ProjectionLayout::GroupByDirectory).unwrap();
 
         assert_eq!(scan.entries.len(), 1);
         assert_eq!(scan.entries[0].files.len(), 2);
         assert_eq!(scan.stats.recognized, 2);
         assert_eq!(scan.stats.ignored_files, 1);
         assert_eq!(scan.stats.skipped_symlinks, 1);
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn flat_layout_combines_all_nested_files_into_one_entry() {
+        let root = test_directory("flat-scan");
+        fs::create_dir_all(root.join("Movie One/Extras")).unwrap();
+        fs::create_dir_all(root.join("Movie Two")).unwrap();
+        fs::write(root.join("Movie One/movie.mkv"), b"one").unwrap();
+        fs::write(root.join("Movie One/Extras/movie.ass"), b"subtitle").unwrap();
+        fs::write(root.join("Movie Two/movie.mkv"), b"two").unwrap();
+
+        let scan = scan(&root, Duration::ZERO, ProjectionLayout::Flat).unwrap();
+
+        assert_eq!(scan.entries.len(), 1);
+        assert_eq!(scan.entries[0].target_directory, None);
+        assert_eq!(scan.entries[0].files.len(), 3);
+        assert!(
+            scan.entries[0]
+                .files
+                .iter()
+                .any(|file| file.relative == Path::new("Movie One/movie.mkv"))
+        );
         fs::remove_dir_all(root).unwrap();
     }
 

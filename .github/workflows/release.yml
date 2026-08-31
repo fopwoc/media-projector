@@ -14,7 +14,7 @@ jobs:
       version: ${{ steps.tag.outputs.version }}
     steps:
       - name: Check out repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           fetch-depth: 0
 
@@ -24,7 +24,7 @@ jobs:
           rustup default stable
 
       - name: Cache Cargo data
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: |
             ~/.cargo/registry/index
@@ -41,29 +41,27 @@ jobs:
           DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
           VERSION: ${{ github.ref_name }}
         run: |
-          if [[ ! "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+          if [[ ! "$VERSION" =~ ^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]; then
             echo "tag is not a stable semantic version: $VERSION" >&2
             exit 1
           fi
           git fetch --no-tags origin \
             "$DEFAULT_BRANCH:refs/remotes/origin/$DEFAULT_BRANCH"
           git merge-base --is-ancestor "$GITHUB_SHA" "origin/$DEFAULT_BRANCH"
-          package_version=$(cargo metadata --no-deps --format-version 1 |
-            jq -r '.packages[] | select(.name == "media-projector") | .version')
-          if [[ "$package_version" != "$VERSION" ]]; then
-            echo "Cargo version $package_version does not match tag $VERSION" >&2
-            exit 1
-          fi
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
 
       - name: Check project
         run: ./scripts/check.sh
+        env:
+          VERSION: ${{ steps.tag.outputs.version }}
 
       - name: Build static Linux artifact
         run: ./scripts/build-release-artifact.sh dist
+        env:
+          VERSION: ${{ steps.tag.outputs.version }}
 
       - name: Upload release artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: release-${{ steps.tag.outputs.version }}
           path: |
@@ -79,12 +77,12 @@ jobs:
       contents: write
     steps:
       - name: Check out repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           fetch-depth: 0
 
       - name: Download release artifacts
-        uses: actions/download-artifact@v5
+        uses: actions/download-artifact@v8
         with:
           name: release-${{ needs.build.outputs.version }}
           path: dist
@@ -114,27 +112,27 @@ jobs:
       packages: write
     steps:
       - name: Check out repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       - name: Resolve lowercase image name
         id: image
         run: echo "name=ghcr.io/${GITHUB_REPOSITORY,,}" >> "$GITHUB_OUTPUT"
 
       - name: Set up QEMU
-        uses: docker/setup-qemu-action@v3
+        uses: docker/setup-qemu-action@v4
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+        uses: docker/setup-buildx-action@v4
 
       - name: Log in to GHCR
-        uses: docker/login-action@v3
+        uses: docker/login-action@v4
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Build and publish container
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: .
           platforms: linux/amd64,linux/arm64
@@ -145,5 +143,7 @@ jobs:
           labels: |
             org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
             org.opencontainers.image.version=${{ needs.build.outputs.version }}
+          build-args: |
+            VERSION=${{ needs.build.outputs.version }}
           cache-from: type=gha
           cache-to: type=gha,mode=max

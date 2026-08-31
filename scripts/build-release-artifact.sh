@@ -9,22 +9,33 @@ output_dir=${1:-dist}
 mkdir -p "$output_dir"
 output_dir=$(cd "$output_dir" && pwd)
 
+container_engine=${CONTAINER_ENGINE:-docker}
+version=$(./scripts/version.sh)
 image_name="media-projector-release-$$"
 container_id=""
 temporary_dir=$(mktemp -d)
 
 cleanup() {
     if [[ -n "$container_id" ]]; then
-        docker rm --force "$container_id" >/dev/null 2>&1 || true
+        "$container_engine" rm --force "$container_id" >/dev/null 2>&1 || true
     fi
-    docker image rm "$image_name" >/dev/null 2>&1 || true
+    "$container_engine" image rm "$image_name" >/dev/null 2>&1 || true
     rm -rf "$temporary_dir"
 }
 trap cleanup EXIT
 
-docker build --platform linux/amd64 --tag "$image_name" .
-container_id=$(docker create --platform linux/amd64 "$image_name" --version)
-docker cp "$container_id:/media-projector" "$temporary_dir/media-projector"
+"$container_engine" build \
+    --platform linux/amd64 \
+    --build-arg "VERSION=$version" \
+    --tag "$image_name" \
+    .
+reported_version=$("$container_engine" run --rm --platform linux/amd64 "$image_name" --version)
+if [[ "$reported_version" != "media-projector $version" ]]; then
+    echo "built binary reports unexpected version: $reported_version" >&2
+    exit 1
+fi
+container_id=$("$container_engine" create --platform linux/amd64 "$image_name" --version)
+"$container_engine" cp "$container_id:/media-projector" "$temporary_dir/media-projector"
 install -m 0755 \
     "$temporary_dir/media-projector" \
     "$output_dir/media-projector-x86_64-linux"

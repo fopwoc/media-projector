@@ -1,0 +1,35 @@
+services:
+  movies-projector:
+    image: ghcr.io/fopwoc/media-projector:latest
+    restart: unless-stopped
+    volumes:
+      - /storage:/storage
+    command:
+      - --source
+      - /storage/torrents/movies
+      - --target
+      - /storage/jellyfin/movies
+    environment:
+      LOG_LEVEL: info
+
+  shows-projector:
+    image: ghcr.io/fopwoc/media-projector:latest
+    restart: unless-stopped
+    volumes:
+      - /storage:/storage
+    command:
+      - --source
+      - /storage/torrents/shows
+      - --target
+      - /storage/jellyfin/shows
+      - --group-by-directory
+    environment:
+      LOG_LEVEL: info
+
+  jellyfin:
+    image: jellyfin/jellyfin
+    restart: unless-stopped
+    volumes:
+      - /storage/jellyfin:/media:ro
+    ports:
+      - "8096:8096"

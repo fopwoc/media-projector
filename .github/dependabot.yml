@@ -19,6 +19,15 @@ updates:
         patterns:
           - "*"
 
+  - package-ecosystem: docker-compose
+    directory: /
+    schedule:
+      interval: monthly
+    groups:
+      compose-dependencies:
+        patterns:
+          - "*"
+
   - package-ecosystem: github-actions
     directory: /
     schedule:
@@ -27,4 +36,3 @@ updates:
       github-actions:
         patterns:
           - "*"
-

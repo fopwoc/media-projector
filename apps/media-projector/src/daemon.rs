@@ -15,20 +15,21 @@ use crate::projection::{self, PreparedPaths};
 pub fn run(config: Config) -> Result<()> {
     logging::info(
         "app",
-        format_args!("media-projector {} starting", env!("CARGO_PKG_VERSION")),
+        format_args!("media-projector {} starting", crate::VERSION),
     );
     logging::info(
         "app",
         format_args!(
-            "source={}, target={}, settle={}s",
+            "source={}, target={}, settle={}s, layout={}",
             config.source.display(),
             config.target.display(),
-            config.settle.as_secs()
+            config.settle.as_secs(),
+            config.layout.name()
         ),
     );
     logging::info("projection", "validating source and target");
     let paths = projection::prepare(&config.source, &config.target)?;
-    reconcile_once(&paths, config.settle)?;
+    reconcile_once(&paths, config.settle, config.layout)?;
 
     if config.once {
         logging::info("app", "one-shot reconciliation complete");
@@ -100,7 +101,7 @@ pub fn run(config: Config) -> Result<()> {
         let periodic_due = now >= next_periodic;
         let debounce_due = pending.is_some_and(|deadline| now >= deadline);
         if periodic_due || debounce_due {
-            if let Err(error) = reconcile_once(&paths, config.settle) {
+            if let Err(error) = reconcile_once(&paths, config.settle, config.layout) {
                 logging::error("reconcile", format_args!("reconciliation failed: {error}"));
             }
             pending = None;
@@ -120,9 +121,13 @@ fn create_watcher(
     Ok(watcher)
 }
 
-fn reconcile_once(paths: &PreparedPaths, settle: Duration) -> Result<()> {
+fn reconcile_once(
+    paths: &PreparedPaths,
+    settle: Duration,
+    layout: crate::ProjectionLayout,
+) -> Result<()> {
     logging::debug("reconcile", "starting full reconciliation");
-    let scan = media::scan(&paths.source, settle)?;
+    let scan = media::scan(&paths.source, settle, layout)?;
     media::log_scan_stats(&scan.stats);
     let plan = build_plan(&scan)?;
     for skipped in &plan.skipped {

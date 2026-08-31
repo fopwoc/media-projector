@@ -14,11 +14,11 @@ fn main() -> ExitCode {
 
     match command {
         Command::Help => {
-            print!("{}", media_projector::HELP);
+            print!("{}", media_projector::help());
             ExitCode::SUCCESS
         }
         Command::Version => {
-            println!("media-projector {}", env!("CARGO_PKG_VERSION"));
+            println!("media-projector {}", media_projector::VERSION);
             ExitCode::SUCCESS
         }
         Command::Preflight(config) => {

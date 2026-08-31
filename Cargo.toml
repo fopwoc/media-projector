@@ -1,11 +1,12 @@
-[package]
-name = "media-projector"
-version = "0.1.0"
-edition = "2024"
-description = "Projects torrent-friendly media trees into a Jellyfin-friendly hardlink layout"
-license = "WTFPL"
+[workspace]
+members = ["apps/media-projector"]
+resolver = "3"
 
-[dependencies]
+[workspace.package]
+edition = "2024"
+license = "WTFNMFPL"
+
+[workspace.dependencies]
 notify = "8.2.0"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"

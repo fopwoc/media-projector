@@ -1,15 +1,19 @@
 mod cli;
 mod daemon;
+mod layout;
 mod logging;
 mod matcher;
 mod media;
 mod preflight;
 mod projection;
 
-pub use cli::{Command, Config, HELP, PreflightConfig, parse_args};
+pub use cli::{Command, Config, PreflightConfig, help, parse_args};
 pub use daemon::run;
+pub use layout::ProjectionLayout;
 pub use logging::{LogLevel, init_logging};
 pub use preflight::run_preflight;
+
+pub const VERSION: &str = env!("VERSION");
 
 pub type Error = Box<dyn std::error::Error + Send + Sync>;
 pub type Result<T> = std::result::Result<T, Error>;

@@ -10,7 +10,7 @@ use crate::PreflightConfig;
 use crate::logging;
 use crate::matcher::{ProjectionPlan, build_plan, episode_identity, normalized_stem};
 use crate::media::{MediaFile, MediaKind, Scan, SourceEntry};
-use crate::{Result, invalid_input};
+use crate::{ProjectionLayout, Result, invalid_input};
 
 #[derive(Serialize)]
 struct PreflightReport {
@@ -35,6 +35,7 @@ struct GeneratorReport {
 #[derive(Serialize)]
 struct ConfigurationReport {
     settle_seconds: u64,
+    projection_layout: &'static str,
     mode: &'static str,
     content_reads: bool,
     target_mutations: bool,
@@ -42,7 +43,7 @@ struct ConfigurationReport {
 
 #[derive(Serialize)]
 struct SummaryReport {
-    top_level_entries: usize,
+    projection_entries: usize,
     directories_visited: usize,
     regular_files_visited: usize,
     recognized_files: usize,
@@ -114,9 +115,15 @@ pub fn run_preflight(config: PreflightConfig) -> Result<()> {
         ),
     );
 
-    let scan = crate::media::scan(&source, config.settle)?;
+    let scan = crate::media::scan(&source, config.settle, config.layout)?;
     let plan = build_plan(&scan)?;
-    let report = build_report(&source, config.settle.as_secs(), &scan, &plan);
+    let report = build_report(
+        &source,
+        config.settle.as_secs(),
+        config.layout,
+        &scan,
+        &plan,
+    );
     write_report(&config.output, &report)?;
     logging::info(
         "preflight",
@@ -131,6 +138,7 @@ pub fn run_preflight(config: PreflightConfig) -> Result<()> {
 fn build_report(
     source: &Path,
     settle_seconds: u64,
+    layout: ProjectionLayout,
     scan: &Scan,
     plan: &ProjectionPlan,
 ) -> PreflightReport {
@@ -184,10 +192,10 @@ fn build_report(
         .collect();
 
     PreflightReport {
-        schema_version: 1,
+        schema_version: 2,
         generator: GeneratorReport {
             name: "media-projector",
-            version: env!("CARGO_PKG_VERSION"),
+            version: crate::VERSION,
         },
         generated_at_unix_seconds: SystemTime::now()
             .duration_since(UNIX_EPOCH)
@@ -196,12 +204,13 @@ fn build_report(
         source: path_string(source),
         configuration: ConfigurationReport {
             settle_seconds,
+            projection_layout: layout.name(),
             mode: "preflight-debug",
             content_reads: false,
             target_mutations: false,
         },
         summary: SummaryReport {
-            top_level_entries: scan.entries.len(),
+            projection_entries: scan.entries.len(),
             directories_visited: scan.stats.directories,
             regular_files_visited: scan.stats.regular_files,
             recognized_files: scan.stats.recognized,
@@ -348,6 +357,7 @@ mod tests {
             source,
             output: output.clone(),
             settle: Duration::ZERO,
+            layout: ProjectionLayout::GroupByDirectory,
             log_level: LogLevel::Error,
         })
         .unwrap();
@@ -360,6 +370,10 @@ mod tests {
             "episode-identity"
         );
         assert_eq!(report["configuration"]["target_mutations"], false);
+        assert_eq!(
+            report["configuration"]["projection_layout"],
+            "group-by-directory"
+        );
         assert!(!root.join("target").exists());
         fs::remove_dir_all(root).unwrap();
     }
