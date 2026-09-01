@@ -1,4 +1,4 @@
-FROM rust:1.97-alpine AS build
+FROM rust:1.98-alpine AS build
 
 ARG VERSION
 WORKDIR /build
